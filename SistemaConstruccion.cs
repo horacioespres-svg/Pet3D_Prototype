@@ -249,18 +249,24 @@ public class SistemaConstruccion : MonoBehaviour
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         RaycastHit hit;
 
+        Debug.Log(">>> ActualizarPreview ejecutándose");
+
         if (Physics.Raycast(ray, out hit, 100f))
         {
+            Debug.Log($">>> Raycast HIT: {hit.collider.gameObject.name}");
+
             Vector3 posicionSnap = hit.point;
 
             if (hit.collider.CompareTag("Construido"))
             {
                 float alturaBase = hit.collider.bounds.max.y;
                 posicionSnap.y = alturaBase;
+                Debug.Log(">>> Hit en objeto Construido");
             }
 
             if (previewActual == null && prefabParedActual != null)
             {
+                Debug.Log(">>> Creando preview");
                 previewActual = Instantiate(prefabParedActual, posicionSnap, Quaternion.Euler(rotacionX, rotacionY, 0f));
                 HacerTransparente(previewActual);
                 DesactivarColliders(previewActual);
@@ -268,8 +274,12 @@ public class SistemaConstruccion : MonoBehaviour
 
             if (previewActual != null)
             {
+                Debug.Log(">>> ANTES de llamar AplicarSnapMagnetico");
+
                 // Aplicar snap magnético a bordes de paredes perpendiculares
                 posicionSnap = AplicarSnapMagnetico(posicionSnap, hit);
+
+                Debug.Log(">>> DESPUÉS de llamar AplicarSnapMagnetico");
 
                 previewActual.transform.position = posicionSnap;
 
@@ -277,6 +287,14 @@ public class SistemaConstruccion : MonoBehaviour
 
                 CambiarColorPreview(puedeColocar ? materialVerde : materialRojo);
             }
+            else
+            {
+                Debug.LogWarning(">>> previewActual es NULL!");
+            }
+        }
+        else
+        {
+            Debug.LogWarning(">>> Raycast NO HIT nada");
         }
     }
 
