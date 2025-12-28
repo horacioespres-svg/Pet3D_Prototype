@@ -92,8 +92,10 @@ public class SistemaConstruccion : MonoBehaviour
     {
         Vector3 posicionFinal = posicionBase;
 
-        // Buscar TODAS las paredes en un área amplia
-        Collider[] todasLasParedes = Physics.OverlapSphere(posicionBase, distanciaSnap * 3f);
+        // BUSCAR TODAS LAS PAREDES CONSTRUIDAS EN LA ESCENA (no por radio)
+        GameObject[] todasLasParedes = GameObject.FindGameObjectsWithTag("Construido");
+
+        Debug.Log($"[SNAP DEBUG] Buscando paredes... Encontradas: {todasLasParedes.Length}");
 
         float distanciaMasCercana = float.MaxValue;
         Vector3 mejorPosicionSnap = posicionBase;
@@ -103,23 +105,48 @@ public class SistemaConstruccion : MonoBehaviour
         Vector3 forwardParedNueva = rotacionActual * Vector3.forward;
         Vector3 rightParedNueva = rotacionActual * Vector3.right;
 
-        foreach (Collider col in todasLasParedes)
+        foreach (GameObject paredObj in todasLasParedes)
         {
-            if (!col.CompareTag("Construido")) continue;
-            if (col.gameObject == previewActual) continue;
+            if (paredObj == previewActual) continue;
 
-            Transform paredExistente = col.transform;
+            Transform paredExistente = paredObj.transform;
             Vector3 forwardParedExistente = paredExistente.forward;
             Vector3 rightParedExistente = paredExistente.right;
-            Bounds bounds = col.bounds;
+
+            // Obtener bounds (intentar primero con Renderer, luego con Collider)
+            Bounds bounds;
+            Renderer rend = paredObj.GetComponentInChildren<Renderer>();
+            if (rend != null)
+            {
+                bounds = rend.bounds;
+            }
+            else
+            {
+                Collider col = paredObj.GetComponent<Collider>();
+                if (col == null) continue;
+                bounds = col.bounds;
+            }
+
             Vector3 centroPared = bounds.center;
+
+            // Verificar distancia al cursor - solo procesar paredes cercanas
+            float distAlCursor = Vector3.Distance(
+                new Vector3(posicionBase.x, 0, posicionBase.z),
+                new Vector3(centroPared.x, 0, centroPared.z)
+            );
+
+            if (distAlCursor > distanciaSnap * 3f) continue; // Ignorar paredes muy lejanas
 
             // Calcular producto punto para detectar orientación
             float productoPunto = Mathf.Abs(Vector3.Dot(forwardParedExistente.normalized, forwardParedNueva.normalized));
 
+            Debug.Log($"[SNAP DEBUG] Pared: {paredObj.name}, Dist: {distAlCursor:F2}m, ProductoPunto: {productoPunto:F2}");
+
             // ========== CASO 1: Paredes PERPENDICULARES (90 grados) ==========
             if (productoPunto < 0.3f)
             {
+                Debug.Log($"[SNAP] Detectada pared PERPENDICULAR");
+
                 // Calcular los bordes laterales de la pared existente
                 Vector3 borde1 = centroPared + rightParedExistente * (bounds.size.x * 0.5f);
                 Vector3 borde2 = centroPared - rightParedExistente * (bounds.size.x * 0.5f);
@@ -131,12 +158,17 @@ public class SistemaConstruccion : MonoBehaviour
                 Vector3 snapPoint1 = new Vector3(borde1.x - offsetNuevaPared.x, posicionBase.y, borde1.z - offsetNuevaPared.z);
                 Vector3 snapPoint2 = new Vector3(borde2.x - offsetNuevaPared.x, posicionBase.y, borde2.z - offsetNuevaPared.z);
 
+                Debug.DrawLine(borde1, borde1 + Vector3.up * 2f, Color.red, 0.1f);
+                Debug.DrawLine(borde2, borde2 + Vector3.up * 2f, Color.blue, 0.1f);
+
                 EvaluarSnapPoint(snapPoint1, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Perpendicular");
                 EvaluarSnapPoint(snapPoint2, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Perpendicular");
             }
             // ========== CASO 2: Paredes PARALELAS (misma dirección) ==========
             else if (productoPunto > 0.7f)
             {
+                Debug.Log($"[SNAP] Detectada pared PARALELA");
+
                 // Snap lado a lado (izquierda y derecha)
                 Vector3 ladoIzq = centroPared - rightParedExistente * (bounds.size.x * 0.5f);
                 Vector3 ladoDer = centroPared + rightParedExistente * (bounds.size.x * 0.5f);
@@ -145,6 +177,9 @@ public class SistemaConstruccion : MonoBehaviour
 
                 Vector3 snapIzq = new Vector3(ladoIzq.x - offsetNuevaPared.x, posicionBase.y, ladoIzq.z - offsetNuevaPared.z);
                 Vector3 snapDer = new Vector3(ladoDer.x + offsetNuevaPared.x, posicionBase.y, ladoDer.z + offsetNuevaPared.z);
+
+                Debug.DrawLine(ladoIzq, ladoIzq + Vector3.up * 2f, Color.green, 0.1f);
+                Debug.DrawLine(ladoDer, ladoDer + Vector3.up * 2f, Color.yellow, 0.1f);
 
                 EvaluarSnapPoint(snapIzq, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Paralela");
                 EvaluarSnapPoint(snapDer, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Paralela");
@@ -159,8 +194,12 @@ public class SistemaConstruccion : MonoBehaviour
 
             if (distHorizontal < anchoPared * 1.5f)
             {
+                Debug.Log($"[SNAP] Detectada pared para APILAR (distHorizontal: {distHorizontal:F2}m)");
+
                 // Snap a la parte superior de la pared existente
                 Vector3 snapArriba = new Vector3(centroPared.x, bounds.max.y, centroPared.z);
+
+                Debug.DrawLine(snapArriba, snapArriba + Vector3.up * 2f, Color.magenta, 0.1f);
 
                 float distVertical = Vector3.Distance(posicionBase, snapArriba);
                 if (distVertical < distanciaMasCercana)
@@ -176,7 +215,12 @@ public class SistemaConstruccion : MonoBehaviour
         if (distanciaMasCercana < distanciaSnap)
         {
             posicionFinal = mejorPosicionSnap;
-            Debug.Log($"SNAP {tipoSnap} activado! Distancia: {distanciaMasCercana:F2}m");
+            Debug.Log($"✓✓✓ SNAP {tipoSnap} ACTIVADO! Distancia: {distanciaMasCercana:F2}m ✓✓✓");
+            Debug.Log($"    Moviendo de {posicionBase} a {mejorPosicionSnap}");
+        }
+        else
+        {
+            Debug.Log($"[SNAP] NO hay snap cercano. Distancia mínima encontrada: {distanciaMasCercana:F2}m (umbral: {distanciaSnap}m)");
         }
 
         return posicionFinal;
@@ -189,11 +233,14 @@ public class SistemaConstruccion : MonoBehaviour
             new Vector3(snapPoint.x, 0, snapPoint.z)
         );
 
+        Debug.Log($"    - SnapPoint evaluado: dist={distancia:F2}m, tipo={tipo}");
+
         if (distancia < distanciaMasCercana)
         {
             distanciaMasCercana = distancia;
             mejorSnap = snapPoint;
             tipoSnap = tipo;
+            Debug.Log($"      ▶ NUEVO MEJOR snap point! (dist={distancia:F2}m)");
         }
     }
 
