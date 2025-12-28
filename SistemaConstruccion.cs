@@ -92,10 +92,16 @@ public class SistemaConstruccion : MonoBehaviour
     {
         Vector3 posicionFinal = posicionBase;
 
-        // Buscar paredes cercanas
-        Collider[] objetosCercanos = Physics.OverlapSphere(posicionBase, distanciaSnap);
+        // Buscar TODAS las paredes en un área amplia (3x el radio de snap)
+        Collider[] todasLasParedes = Physics.OverlapSphere(posicionBase, distanciaSnap * 3f);
 
-        foreach (Collider col in objetosCercanos)
+        float distanciaMasCercana = float.MaxValue;
+        Vector3 mejorPosicionSnap = posicionBase;
+
+        Quaternion rotacionActual = Quaternion.Euler(rotacionX, rotacionY, 0f);
+        Vector3 forwardParedNueva = rotacionActual * Vector3.forward;
+
+        foreach (Collider col in todasLasParedes)
         {
             if (!col.CompareTag("Construido")) continue;
             if (col.gameObject == previewActual) continue;
@@ -103,10 +109,6 @@ public class SistemaConstruccion : MonoBehaviour
             // Obtener la dirección de la pared existente
             Transform paredExistente = col.transform;
             Vector3 forwardParedExistente = paredExistente.forward;
-
-            // Obtener la dirección de la pared que estamos colocando
-            Quaternion rotacionActual = Quaternion.Euler(rotacionX, rotacionY, 0f);
-            Vector3 forwardParedNueva = rotacionActual * Vector3.forward;
 
             // Calcular el producto punto para detectar si son perpendiculares
             float productoPunto = Mathf.Abs(Vector3.Dot(forwardParedExistente.normalized, forwardParedNueva.normalized));
@@ -123,23 +125,52 @@ public class SistemaConstruccion : MonoBehaviour
                 Vector3 borde1 = centroPared + rightPared * (bounds.size.x * 0.5f);
                 Vector3 borde2 = centroPared - rightPared * (bounds.size.x * 0.5f);
 
-                // Determinar cuál borde está más cerca
-                float distBorde1 = Vector3.Distance(new Vector3(posicionBase.x, 0, posicionBase.z),
-                                                     new Vector3(borde1.x, 0, borde1.z));
-                float distBorde2 = Vector3.Distance(new Vector3(posicionBase.x, 0, posicionBase.z),
-                                                     new Vector3(borde2.x, 0, borde2.z));
-
-                Vector3 bordeCercano = distBorde1 < distBorde2 ? borde1 : borde2;
-
-                // Ajustar la posición al borde, pero offset según la rotación de la nueva pieza
-                // La nueva pared debe alinearse considerando su propio ancho
+                // Calcular el offset para la nueva pared según su rotación
                 Vector3 offsetNuevaPared = rotacionActual * Vector3.right * (anchoPared * 0.5f);
 
-                posicionFinal.x = bordeCercano.x - offsetNuevaPared.x;
-                posicionFinal.z = bordeCercano.z - offsetNuevaPared.z;
+                // Calcular posiciones de snap para AMBOS bordes
+                Vector3 snapPoint1 = new Vector3(
+                    borde1.x - offsetNuevaPared.x,
+                    posicionBase.y,
+                    borde1.z - offsetNuevaPared.z
+                );
 
-                break; // Solo aplicar snap a la primera pared perpendicular encontrada
+                Vector3 snapPoint2 = new Vector3(
+                    borde2.x - offsetNuevaPared.x,
+                    posicionBase.y,
+                    borde2.z - offsetNuevaPared.z
+                );
+
+                // Calcular distancias al cursor (ignorando Y)
+                float distSnap1 = Vector3.Distance(
+                    new Vector3(posicionBase.x, 0, posicionBase.z),
+                    new Vector3(snapPoint1.x, 0, snapPoint1.z)
+                );
+
+                float distSnap2 = Vector3.Distance(
+                    new Vector3(posicionBase.x, 0, posicionBase.z),
+                    new Vector3(snapPoint2.x, 0, snapPoint2.z)
+                );
+
+                // Elegir el snap point más cercano al cursor
+                if (distSnap1 < distSnap2 && distSnap1 < distanciaMasCercana)
+                {
+                    distanciaMasCercana = distSnap1;
+                    mejorPosicionSnap = snapPoint1;
+                }
+                else if (distSnap2 < distanciaMasCercana)
+                {
+                    distanciaMasCercana = distSnap2;
+                    mejorPosicionSnap = snapPoint2;
+                }
             }
+        }
+
+        // Si encontramos un snap point cercano (dentro del radio de snap), ATRAER hacia él
+        if (distanciaMasCercana < distanciaSnap)
+        {
+            posicionFinal = mejorPosicionSnap;
+            Debug.Log($"SNAP MAGNÉTICO activado! Distancia: {distanciaMasCercana:F2}m");
         }
 
         return posicionFinal;
