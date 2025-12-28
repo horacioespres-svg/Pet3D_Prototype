@@ -37,6 +37,7 @@ public class SistemaConstruccion : MonoBehaviour
 
         if (modoConstruccion)
         {
+            Debug.Log("★★★ MODO CONSTRUCCIÓN ACTIVO - FRAME ★★★");
             GestionarRotacion();
             ActualizarPreviewConSnap();
 
@@ -81,10 +82,18 @@ public class SistemaConstruccion : MonoBehaviour
 
     void ActualizarPreviewConSnap()
     {
+        Debug.Log("▶▶▶ ActualizarPreviewConSnap EJECUTÁNDOSE");
+
         Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
         RaycastHit hit;
 
-        if (!Physics.Raycast(ray, out hit, 100f)) return;
+        if (!Physics.Raycast(ray, out hit, 100f))
+        {
+            Debug.Log("XXX Raycast NO HIT");
+            return;
+        }
+
+        Debug.Log(">>> Raycast HIT: " + hit.collider.gameObject.name);
 
         Vector3 posicionBase = hit.point;
 
@@ -107,6 +116,8 @@ public class SistemaConstruccion : MonoBehaviour
         // ============= SNAP MAGNÉTICO =============
         Vector3 posicionFinal = posicionBase;
         GameObject[] paredes = GameObject.FindGameObjectsWithTag("Construido");
+
+        Debug.Log("►►► SNAP: Paredes encontradas con tag Construido: " + paredes.Length);
 
         float mejorDistancia = float.MaxValue;
 
@@ -174,11 +185,13 @@ public class SistemaConstruccion : MonoBehaviour
         if (mejorDistancia < distanciaSnap)
         {
             previewActual.transform.position = posicionFinal;
-            Debug.Log("✓ SNAP ACTIVADO - Distancia: " + mejorDistancia.ToString("F2") + "m");
+            Debug.Log("✓✓✓ ¡¡¡SNAP MAGNÉTICO ACTIVADO!!! ✓✓✓ Distancia: " + mejorDistancia.ToString("F2") + "m");
+            Debug.Log("    Moviendo de " + posicionBase + " a " + posicionFinal);
         }
         else
         {
             previewActual.transform.position = posicionBase;
+            Debug.Log("--- Sin snap (mejorDist: " + mejorDistancia.ToString("F2") + "m, umbral: " + distanciaSnap + "m)");
         }
 
         puedeColocar = !HayColision();
