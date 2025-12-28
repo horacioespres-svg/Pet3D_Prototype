@@ -92,88 +92,109 @@ public class SistemaConstruccion : MonoBehaviour
     {
         Vector3 posicionFinal = posicionBase;
 
-        // Buscar TODAS las paredes en un área amplia (3x el radio de snap)
+        // Buscar TODAS las paredes en un área amplia
         Collider[] todasLasParedes = Physics.OverlapSphere(posicionBase, distanciaSnap * 3f);
 
         float distanciaMasCercana = float.MaxValue;
         Vector3 mejorPosicionSnap = posicionBase;
+        string tipoSnap = "";
 
         Quaternion rotacionActual = Quaternion.Euler(rotacionX, rotacionY, 0f);
         Vector3 forwardParedNueva = rotacionActual * Vector3.forward;
+        Vector3 rightParedNueva = rotacionActual * Vector3.right;
 
         foreach (Collider col in todasLasParedes)
         {
             if (!col.CompareTag("Construido")) continue;
             if (col.gameObject == previewActual) continue;
 
-            // Obtener la dirección de la pared existente
             Transform paredExistente = col.transform;
             Vector3 forwardParedExistente = paredExistente.forward;
+            Vector3 rightParedExistente = paredExistente.right;
+            Bounds bounds = col.bounds;
+            Vector3 centroPared = bounds.center;
 
-            // Calcular el producto punto para detectar si son perpendiculares
+            // Calcular producto punto para detectar orientación
             float productoPunto = Mathf.Abs(Vector3.Dot(forwardParedExistente.normalized, forwardParedNueva.normalized));
 
-            // Si son perpendiculares (producto punto cercano a 0)
+            // ========== CASO 1: Paredes PERPENDICULARES (90 grados) ==========
             if (productoPunto < 0.3f)
             {
-                // Obtener el borde de la pared existente
-                Bounds bounds = col.bounds;
-                Vector3 centroPared = bounds.center;
+                // Calcular los bordes laterales de la pared existente
+                Vector3 borde1 = centroPared + rightParedExistente * (bounds.size.x * 0.5f);
+                Vector3 borde2 = centroPared - rightParedExistente * (bounds.size.x * 0.5f);
 
-                // Calcular los dos bordes perpendiculares a la dirección de la pared
-                Vector3 rightPared = paredExistente.right;
-                Vector3 borde1 = centroPared + rightPared * (bounds.size.x * 0.5f);
-                Vector3 borde2 = centroPared - rightPared * (bounds.size.x * 0.5f);
+                // Offset de la nueva pared
+                Vector3 offsetNuevaPared = rightParedNueva * (anchoPared * 0.5f);
 
-                // Calcular el offset para la nueva pared según su rotación
-                Vector3 offsetNuevaPared = rotacionActual * Vector3.right * (anchoPared * 0.5f);
+                // Snap points para ambos bordes
+                Vector3 snapPoint1 = new Vector3(borde1.x - offsetNuevaPared.x, posicionBase.y, borde1.z - offsetNuevaPared.z);
+                Vector3 snapPoint2 = new Vector3(borde2.x - offsetNuevaPared.x, posicionBase.y, borde2.z - offsetNuevaPared.z);
 
-                // Calcular posiciones de snap para AMBOS bordes
-                Vector3 snapPoint1 = new Vector3(
-                    borde1.x - offsetNuevaPared.x,
-                    posicionBase.y,
-                    borde1.z - offsetNuevaPared.z
-                );
+                EvaluarSnapPoint(snapPoint1, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Perpendicular");
+                EvaluarSnapPoint(snapPoint2, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Perpendicular");
+            }
+            // ========== CASO 2: Paredes PARALELAS (misma dirección) ==========
+            else if (productoPunto > 0.7f)
+            {
+                // Snap lado a lado (izquierda y derecha)
+                Vector3 ladoIzq = centroPared - rightParedExistente * (bounds.size.x * 0.5f);
+                Vector3 ladoDer = centroPared + rightParedExistente * (bounds.size.x * 0.5f);
 
-                Vector3 snapPoint2 = new Vector3(
-                    borde2.x - offsetNuevaPared.x,
-                    posicionBase.y,
-                    borde2.z - offsetNuevaPared.z
-                );
+                Vector3 offsetNuevaPared = rightParedNueva * (anchoPared * 0.5f);
 
-                // Calcular distancias al cursor (ignorando Y)
-                float distSnap1 = Vector3.Distance(
-                    new Vector3(posicionBase.x, 0, posicionBase.z),
-                    new Vector3(snapPoint1.x, 0, snapPoint1.z)
-                );
+                Vector3 snapIzq = new Vector3(ladoIzq.x - offsetNuevaPared.x, posicionBase.y, ladoIzq.z - offsetNuevaPared.z);
+                Vector3 snapDer = new Vector3(ladoDer.x + offsetNuevaPared.x, posicionBase.y, ladoDer.z + offsetNuevaPared.z);
 
-                float distSnap2 = Vector3.Distance(
-                    new Vector3(posicionBase.x, 0, posicionBase.z),
-                    new Vector3(snapPoint2.x, 0, snapPoint2.z)
-                );
+                EvaluarSnapPoint(snapIzq, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Paralela");
+                EvaluarSnapPoint(snapDer, posicionBase, ref distanciaMasCercana, ref mejorPosicionSnap, ref tipoSnap, "Paralela");
+            }
 
-                // Elegir el snap point más cercano al cursor
-                if (distSnap1 < distSnap2 && distSnap1 < distanciaMasCercana)
+            // ========== CASO 3: SNAP VERTICAL (apilar) ==========
+            // Verificar si el cursor está cerca horizontalmente de la pared
+            float distHorizontal = Vector3.Distance(
+                new Vector3(posicionBase.x, 0, posicionBase.z),
+                new Vector3(centroPared.x, 0, centroPared.z)
+            );
+
+            if (distHorizontal < anchoPared * 1.5f)
+            {
+                // Snap a la parte superior de la pared existente
+                Vector3 snapArriba = new Vector3(centroPared.x, bounds.max.y, centroPared.z);
+
+                float distVertical = Vector3.Distance(posicionBase, snapArriba);
+                if (distVertical < distanciaMasCercana)
                 {
-                    distanciaMasCercana = distSnap1;
-                    mejorPosicionSnap = snapPoint1;
-                }
-                else if (distSnap2 < distanciaMasCercana)
-                {
-                    distanciaMasCercana = distSnap2;
-                    mejorPosicionSnap = snapPoint2;
+                    distanciaMasCercana = distVertical;
+                    mejorPosicionSnap = snapArriba;
+                    tipoSnap = "Vertical (apilado)";
                 }
             }
         }
 
-        // Si encontramos un snap point cercano (dentro del radio de snap), ATRAER hacia él
+        // Si encontramos un snap point cercano, ATRAER hacia él
         if (distanciaMasCercana < distanciaSnap)
         {
             posicionFinal = mejorPosicionSnap;
-            Debug.Log($"SNAP MAGNÉTICO activado! Distancia: {distanciaMasCercana:F2}m");
+            Debug.Log($"SNAP {tipoSnap} activado! Distancia: {distanciaMasCercana:F2}m");
         }
 
         return posicionFinal;
+    }
+
+    void EvaluarSnapPoint(Vector3 snapPoint, Vector3 posicionCursor, ref float distanciaMasCercana, ref Vector3 mejorSnap, ref string tipoSnap, string tipo)
+    {
+        float distancia = Vector3.Distance(
+            new Vector3(posicionCursor.x, 0, posicionCursor.z),
+            new Vector3(snapPoint.x, 0, snapPoint.z)
+        );
+
+        if (distancia < distanciaMasCercana)
+        {
+            distanciaMasCercana = distancia;
+            mejorSnap = snapPoint;
+            tipoSnap = tipo;
+        }
     }
 
     void ActualizarPreview()
